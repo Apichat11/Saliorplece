@@ -304,73 +304,85 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 🚀 ลูปหลัก (หาบอส วาร์ป และเสก)
+-- 🚀 ลูปหลัก - แก้ไขบัคค้างที่ Lawless (Farm Loop)
 -- ==========================================
 task.spawn(function()
     while getgenv().Renxy_Active do
         if getgenv().Renxy_IsFarming then
-            for i, target in ipairs(FarmList) do
+            -- ใช้ ipairs วนลูปจาก FarmList ลำดับที่ 1 ถึงสุดท้าย
+            for i = 1, #FarmList do
+                local target = FarmList[i]
+                
+                -- ตรวจสอบก่อนวาปทุกครั้งว่ายังเปิดฟาร์มอยู่ไหม
                 if not getgenv().Renxy_IsFarming or not getgenv().Renxy_Active then break end 
                 
-                teleportRemote:FireServer(target.Portal)
-                task.wait(target.WaitTime or 0.5) 
-                if not getgenv().Renxy_IsFarming or not getgenv().Renxy_Active then break end
-                
-                EquipWeapon(weaponName)
-                task.wait(0.1)
-                
-                local npcList = type(target.NPC) == "table" and target.NPC or { target.NPC }
-                
-                for _, npcName in ipairs(npcList) do
-                    if not getgenv().Renxy_IsFarming or not getgenv().Renxy_Active then break end
+                -- [ใช้ pcall เพื่อกันสคริปต์เด้งหลุด]
+                pcall(function()
+                    -- 1. วาปไปด่าน
+                    teleportRemote:FireServer(target.Portal)
+                    task.wait(target.WaitTime or 0.8) -- เพิ่มเวลาวาปนิดหน่อยกันด่านโหลดไม่ทัน
                     
-                    local skipNPC = false
-                    if npcName == "StrongestShinobiBoss" and not cfg.FarmStrongestShinobi then
-                        skipNPC = true
-                    elseif npcName == "AtomicBoss_Normal" and not cfg.FarmAtomicBoss then
-                        skipNPC = true
-                    end
-
-                    if not skipNPC then
-                        getgenv().Renxy_CurrentNPC = npcName
+                    -- 2. เช็คอาวุธ
+                    EquipWeapon(weaponName)
+                    
+                    -- 3. เตรียมรายชื่อ NPC
+                    local npcList = type(target.NPC) == "table" and target.NPC or { target.NPC }
+                    
+                    for _, npcName in ipairs(npcList) do
+                        if not getgenv().Renxy_IsFarming or not getgenv().Renxy_Active then break end
                         
-                        -- 🔥 ระบบเสกบอส AtomicBoss_Normal
-                        if npcName == "AtomicBoss_Normal" then
-                            pcall(function()
-                                game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("RequestSpawnAtomic"):FireServer("Normal")
-                            end)
+                        -- เช็ค Config บอส
+                        local skipNPC = false
+                        if npcName == "StrongestShinobiBoss" and not cfg.FarmStrongestShinobi then
+                            skipNPC = true
+                        elseif npcName == "AtomicBoss_Normal" and not cfg.FarmAtomicBoss then
+                            skipNPC = true
                         end
-                        
-                        -- ✨ รอให้มอนสเตอร์เกิด (สแกนหาเฉพาะตัวที่เป็นๆ)
-                        local targetNPC = GetAliveMob(npcName)
-                        local waitForSpawn = 0
-                        while not targetNPC and waitForSpawn < 30 do -- รอสูงสุด 3 วินาที
-                            task.wait(0.1)
-                            targetNPC = GetAliveMob(npcName)
-                            waitForSpawn = waitForSpawn + 1
-                        end
-                        
-                        -- ถ้าเจอมอนสเตอร์ที่ยังมีชีวิต ให้พุ่งไปตี
-                        if targetNPC then
-                            local timeout = 0
-                            local isBoss = (npcName == "StrongestShinobiBoss" or npcName == "AtomicBoss_Normal")
-                            local maxTimeout = isBoss and 6000 or 100 
 
-                            -- เช็คเลือดตัวละครเราและมอนสเตอร์แบบเรียลไทม์ ป้องกันบัคยืนนิ่ง
-                            while getgenv().Renxy_IsFarming and getgenv().Renxy_Active and targetNPC.Parent and targetNPC:FindFirstChild("Humanoid") and targetNPC.Humanoid.Health > 0 and timeout < maxTimeout do
-                                local currentCharacter = player.Character
-                                if currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart") and currentCharacter:FindFirstChild("Humanoid") and currentCharacter.Humanoid.Health > 0 then
-                                    currentCharacter.HumanoidRootPart.CFrame = targetNPC.HumanoidRootPart.CFrame * CFrame.new(0, 8, 0)
-                                end
+                        if not skipNPC then
+                            getgenv().Renxy_CurrentNPC = npcName
+                            
+                            -- ระบบเสกบอส Atomic
+                            if npcName == "AtomicBoss_Normal" then
+                                pcall(function()
+                                    game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("RequestSpawnAtomic"):FireServer("Normal")
+                                end)
+                            end
+                            
+                            -- รอ NPC เกิด (ลดเวลาลงเหลือ 2 วินาทีเพื่อให้วนลูปไวขึ้น)
+                            local targetNPC = GetAliveMob(npcName)
+                            local waitForSpawn = 0
+                            while not targetNPC and waitForSpawn < 20 do 
                                 task.wait(0.1)
-                                timeout = timeout + 1
+                                targetNPC = GetAliveMob(npcName)
+                                waitForSpawn = waitForSpawn + 1
+                            end
+                            
+                            -- ถ้าเจอ NPC ให้ตี
+                            if targetNPC then
+                                local timeout = 0
+                                local isBoss = (npcName == "StrongestShinobiBoss" or npcName == "AtomicBoss_Normal")
+                                local maxTimeout = isBoss and 1200 or 150 -- บอสรอ 2 นาที, มอนปกติรอ 15 วิ
+
+                                while getgenv().Renxy_IsFarming and getgenv().Renxy_Active and targetNPC.Parent and targetNPC:FindFirstChild("Humanoid") and targetNPC.Humanoid.Health > 0 and timeout < maxTimeout do
+                                    local char = player.Character
+                                    if char and char:FindFirstChild("HumanoidRootPart") then
+                                        char.HumanoidRootPart.CFrame = targetNPC.HumanoidRootPart.CFrame * CFrame.new(0, 8, 0)
+                                    end
+                                    task.wait(0.1)
+                                    timeout = timeout + 1
+                                end
                             end
                         end
                     end
-                    task.wait(0.1) 
-                end
-                task.wait(0.2) 
+                end)
+                
+                -- หน่วงเวลาเล็กน้อยก่อนไปด่านถัดไป
+                task.wait(0.2)
             end
+        else
+            -- ถ้าปิดฟาร์ม ให้รอเช็คใหม่ทุก 1 วินาที
+            task.wait(1)
         end
         task.wait(0.1)
     end
