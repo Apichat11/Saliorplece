@@ -30,7 +30,8 @@ if not getgenv().Config then
         FarmStrongestShinobi = false, 
         FarmAtomicBoss = false,       
         AutoHaki = true,
-        AutoOpenChest = true
+        AutoOpenChest = true,
+        AutoBuyMerchant = true,
     }
 end
 
@@ -201,7 +202,7 @@ task.spawn(function()
     local useItemRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("UseItem")
     local reqInvRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("RequestInventory")
     local chestList = {"Rare Chest", "Epic Chest"} 
-    local checkInterval = 600 -- 10 นาที (600 วินาที)
+    local checkInterval = 300 -- 10 นาที (600 วินาที)
 
     while getgenv().Renxy_Active do
         -- เช็คเงื่อนไขก่อนเริ่มทำงาน
@@ -231,6 +232,50 @@ task.spawn(function()
         
         -- เข้าสู่โหมดพัก 10 นาที
         task.wait(checkInterval)
+    end
+end)
+
+-- ==========================================
+-- 🛒 ระบบ Auto Buy Merchant (ซื้อของพ่อค้าอัตโนมัติ)
+-- ==========================================
+task.spawn(function()
+    local Remotes = game:GetService("ReplicatedStorage"):WaitForChild("Remotes")
+    local merchantRemote = Remotes:WaitForChild("MerchantRemotes"):WaitForChild("PurchaseMerchantItem")
+    
+    -- ใส่ชื่อไอเทมที่ต้องการซื้อตรงนี้ (เพิ่มกี่อันก็ได้)
+    local itemsToBuy = {
+        "Passive Shard",
+        "Dungeon Key",
+        "Boss Key",
+        "Race Reroll",
+        "Trait Reroll",
+        "Clan Reroll",
+        -- "ไอเทมอื่นๆ", 
+    }
+    
+    local buyInterval = 60 -- เช็คทุกๆ 60 วินาที (เปลี่ยนตัวเลขได้)
+
+    while getgenv().Renxy_Active do
+        -- เช็คเงื่อนไขจาก Config
+        if getgenv().Config and getgenv().Config.AutoBuyMerchant and getgenv().Renxy_IsFarming then
+            for _, itemName in ipairs(itemsToBuy) do
+                -- ใช้ pcall ป้องกันสคริปต์ค้าง เนื่องจากเป็น InvokeServer (รอ Server ตอบกลับ)
+                local success, result = pcall(function()
+                    return merchantRemote:InvokeServer(itemName, 20)
+                end)
+
+                if success then
+                    print("🛒 [Merchant] ส่งคำสั่งซื้อ: " .. itemName)
+                else
+                    warn("❌ [Merchant] ซื้อล้มเหลว หรือพ่อค้าไม่มีของ: " .. tostring(result))
+                end
+                
+                task.wait(1) -- หน่วงเวลาเล็กน้อยก่อนซื้อชิ้นต่อไป กันโดนเตะ
+            end
+        end
+        
+        -- รอเวลาก่อนเช็ครอบถัดไป
+        task.wait(buyInterval)
     end
 end)
 
